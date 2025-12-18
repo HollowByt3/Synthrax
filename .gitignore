@@ -1,0 +1,24 @@
+# --- Security: NEVER commit these ---
+.env
+*.env
+secrets.txt
+
+# --- C++ Build Artifacts ---
+# Ignore the compiled binary (replace with your actual binary name)
+cyborg_pusher
+cyborg_pusher.exe
+*.o
+*.obj
+
+# --- CMake Artifacts ---
+# Ignore the entire build directory where CMake stores its temporary files
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# --- OS / Editor junk ---
+.DS_Store
+.vscode/
+.idea/
+

@@ -2,13 +2,14 @@ cmake_minimum_required(VERSION 3.12)
 project(synthrax CXX)
 
 # Find the libpcap package
-find_package(PCAP REQUIRED)
-find_package(Boost REQUIRED COMPONENTS System Filesystem)
+find_package(CURL REQUIRED)
 add_executable(synthrax main.cpp)
+
+# We want to have the binary compiled in the same folder as the code
+set_target_properties("synthrax" PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Link the executable with the required libraries
 target_link_libraries(synthrax PRIVATE 
-${PCAP_LIBRARIES}
-${Boost_LIBRARIES}
+CURL::libcurl
 )
 
