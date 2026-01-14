@@ -2,6 +2,7 @@
 #include <string>
 #include <cstdlib> 
 #include <curl/curl.h>
+#include <chrono>
 
 void send_to_cyborg(const std::string& rsyslog_json, 
                     const std::string& apiKey, 
@@ -16,18 +17,21 @@ void send_to_cyborg(const std::string& rsyslog_json,
     std::string authHeader = "X-API-Key: " + apiKey;
     headers = curl_slist_append(headers, authHeader.c_str());
 
-    // Construct the payload with the dynamic indexKey
-    std::string payload = R"({
-        "index_name": "structured_system_logs",
-        "index_key": ")" + indexKey + R"(",
-        "items": [{
-            "id": "log_)" + std::to_string(time(NULL)) + R"(",
-            "vector": [0.0, 0.0, 0.0],
-            "metadata": )" + rsyslog_json + R"(
-        }]
-    })";
+    // 1. Generate a unique ID using nanoseconds
+    auto ts = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    std::string logId = "log_" + std::to_string(ts);
 
-    // Combine Base URI with the specific endpoint path
+	std::string payload = R"({
+    "index_name": "structured_system_logs",
+    "index_key": ")" + indexKey + R"(",
+    "items": [{
+        "id": ")" + logId + R"(",
+	"contents": "Syslog entry from )" + logId + R"(", 
+        "metadata": )" + rsyslog_json + R"(
+    }]
+})";
+
+
     std::string fullUrl = baseUri + "/v1/vectors/upsert";
 
     curl_easy_setopt(curl, CURLOPT_URL, fullUrl.c_str());
@@ -35,25 +39,32 @@ void send_to_cyborg(const std::string& rsyslog_json,
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
 
-    curl_easy_perform(curl);
+    // 3. Perform the request and check for errors
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        std::cerr << "CURL Error: " << curl_easy_strerror(res) << std::endl;
+    }
     
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 }
-
 int main() {
-    // 1. Fetch all three required variables from the system
+    // Disable buffering to ensure logs are processed immediately
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(NULL);
+
+    // 1. Fetch required variables from the system environment
     const char* envApiKey   = std::getenv("CYBORG_API_KEY");
     const char* envIndexKey = std::getenv("CYBORG_INDEX_KEY");
     const char* envBaseUri  = std::getenv("CYBORG_BASE_URI");
 
-    // 2. Comprehensive validation
+    // 2. Comprehensive validation (Fixed variable names)
     if (!envApiKey || !envIndexKey || !envBaseUri) {
         std::cerr << "CRITICAL ERROR: Environment variables missing!\n"
-                  << "Please ensure the following are set:\n"
+                  << "Please ensure the following are set in rsyslog global configuration:\n"
                   << "  - CYBORG_API_KEY\n"
                   << "  - CYBORG_INDEX_KEY\n"
-                  << "  - CYBORG_BASE_URI (e.g., http://localhost:8000)\n";
+                  << "  - CYBORG_BASE_URI\n";
         return 1;
     }
 
@@ -61,12 +72,21 @@ int main() {
     std::string indexKey(envIndexKey);
     std::string baseUri(envBaseUri);
 
+    // 3. Continuous processing of stdin from rsyslog
     std::string line;
-    while (std::getline(std::cin, line)) {
-        if (!line.empty()) {
-            send_to_cyborg(line, apiKey, indexKey, baseUri);
+
+while (std::getline(std::cin, line)) {
+    if (!line.empty()) {
+        // Remove trailing \r or \n if they exist
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+            line.pop_back();
         }
+        send_to_cyborg(line, apiKey, indexKey, baseUri);
     }
+}
+
+
     return 0;
 }
+
 
